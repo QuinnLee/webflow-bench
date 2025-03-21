@@ -1,7 +1,17 @@
 {
+  "name": "db-benchmark",
+  "version": "1.0.0",
+  "description": "Benchmark comparison between Neon and Turso databases",
+  "main": "benchmark.js",
+  "scripts": {
+    "benchmark": "node benchmark.js",
+    "test": "node benchmark.js 100",
+    "test-1000": "node benchmark.js 1000",
+    "full": "node benchmark.js 10000"
+  },
   "dependencies": {
-    "@libsql/client": "^0.15.0",
-    "@neondatabase/serverless": "^0.10.4",
-    "dotenv": "^16.4.7"
+    "@neondatabase/serverless": "latest",
+    "@libsql/client": "latest",
+    "dotenv": "latest"
   }
 }

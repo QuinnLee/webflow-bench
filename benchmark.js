@@ -3,9 +3,16 @@ const { neon } = require("@neondatabase/serverless");
 const { createClient } = require("@libsql/client");
 const fs = require("fs");
 
+// Get the number of records from command line argument, default to 100
+const recordCount = parseInt(process.argv[2]) || 100;
+console.log(`Running benchmark with ${recordCount} records...`);
+
 // Initialize results object
 const benchmarkResults = {
   timestamp: new Date().toISOString(),
+  configuration: {
+    recordCount: recordCount,
+  },
   coldStart: {},
   writeTest: {},
   readTest: {
@@ -15,7 +22,7 @@ const benchmarkResults = {
 };
 
 // Database clients
-const neonClient = neon(process.env.NEON_DATABASE_URL);
+const sql = neon(process.env.NEON_DATABASE_URL);
 const tursoClient = createClient({
   url: process.env.TURSO_DATABASE_URL,
   authToken: process.env.TURSO_AUTH_TOKEN,
@@ -31,6 +38,15 @@ function generateSampleData(count) {
   }));
 }
 
+// Write results to file
+function saveResults() {
+  const fileName = `benchmark-results-${recordCount}-rows-${new Date()
+    .toISOString()
+    .replace(/[:.]/g, "-")}.json`;
+  fs.writeFileSync(fileName, JSON.stringify(benchmarkResults, null, 2));
+  console.log(`\nResults saved to ${fileName}`);
+}
+
 // Benchmark utilities
 async function measureTime(fn) {
   const start = performance.now();
@@ -41,15 +57,23 @@ async function measureTime(fn) {
 
 // Database setup
 async function setupDatabases() {
+  // Clean up existing tables first
+  try {
+    await sql`DROP TABLE IF EXISTS neon_tasks`;
+    await tursoClient.execute("DROP TABLE IF EXISTS turso_tasks");
+  } catch (error) {
+    console.log("Tables did not exist, proceeding with creation...");
+  }
+
   // Neon setup
-  await neonClient.query(`
+  await sql`
     CREATE TABLE IF NOT EXISTS neon_tasks (
       id SERIAL PRIMARY KEY,
       title TEXT NOT NULL,
       description TEXT,
       created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     )
-  `);
+  `;
 
   // Turso setup
   await tursoClient.execute(`
@@ -62,26 +86,17 @@ async function setupDatabases() {
   `);
 }
 
-// Write results to file
-function saveResults() {
-  const fileName = `benchmark-results-${new Date()
-    .toISOString()
-    .replace(/[:.]/g, "-")}.json`;
-  fs.writeFileSync(fileName, JSON.stringify(benchmarkResults, null, 2));
-  console.log(`\nResults saved to ${fileName}`);
-}
-
 // Write test
 async function runWriteTest(data) {
-  console.log("\n=== Write Test (10,000 rows) ===");
+  console.log(`\n=== Write Test (${data.length} rows) ===`);
 
   // Neon write test
   const neonTime = await measureTime(async () => {
     for (const item of data) {
-      await neonClient.query(
-        "INSERT INTO neon_tasks (title, description, created_at) VALUES ($1, $2, $3)",
-        [item.title, item.description, item.created_at]
-      );
+      await sql`
+        INSERT INTO neon_tasks (title, description, created_at) 
+        VALUES (${item.title}, ${item.description}, ${item.created_at})
+      `;
     }
   });
   console.log(`Neon Write Time: ${neonTime.toFixed(2)}ms`);
@@ -102,6 +117,8 @@ async function runWriteTest(data) {
     neon: neonTime,
     turso: tursoTime,
     rowCount: data.length,
+    neonAvgPerRow: neonTime / data.length,
+    tursoAvgPerRow: tursoTime / data.length,
   };
 }
 
@@ -112,7 +129,7 @@ async function runReadTest() {
   // Simple query test
   console.log("\nSimple Query (SELECT * LIMIT 100):");
   const neonQueryTime = await measureTime(async () => {
-    await neonClient.query("SELECT * FROM neon_tasks LIMIT 100");
+    await sql`SELECT * FROM neon_tasks LIMIT 100`;
   });
   console.log(`Neon Query Time: ${neonQueryTime.toFixed(2)}ms`);
 
@@ -124,9 +141,7 @@ async function runReadTest() {
   // Filter test
   console.log("\nFilter Query (WHERE title LIKE):");
   const neonFilterTime = await measureTime(async () => {
-    await neonClient.query(
-      "SELECT * FROM neon_tasks WHERE title LIKE '%Task 1%'"
-    );
+    await sql`SELECT * FROM neon_tasks WHERE title LIKE ${"%Task 1%"}`;
   });
   console.log(`Neon Filter Time: ${neonFilterTime.toFixed(2)}ms`);
 
@@ -156,8 +171,8 @@ async function runColdStartTest() {
 
   // Neon cold start
   const neonColdStart = await measureTime(async () => {
-    const tempNeonClient = neon(process.env.NEON_DATABASE_URL);
-    await tempNeonClient.query("SELECT 1");
+    const tempSql = neon(process.env.NEON_DATABASE_URL);
+    await tempSql`SELECT 1`;
   });
   console.log(`Neon Cold Start Time: ${neonColdStart.toFixed(2)}ms`);
 
@@ -184,7 +199,7 @@ async function runBenchmarks() {
     console.log("Setting up databases...");
     await setupDatabases();
 
-    const sampleData = generateSampleData(10000);
+    const sampleData = generateSampleData(recordCount);
 
     // Run tests
     await runColdStartTest();

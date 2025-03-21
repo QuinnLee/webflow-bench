@@ -1,0 +1,27 @@
+{
+  "timestamp": "2025-03-21T05:58:24.091Z",
+  "configuration": {
+    "recordCount": 100
+  },
+  "coldStart": {
+    "neon": 87.25950000000012,
+    "turso": 96.77075000000013
+  },
+  "writeTest": {
+    "neon": 10824.757833,
+    "turso": 14919.185209000001,
+    "rowCount": 100,
+    "neonAvgPerRow": 108.24757833,
+    "tursoAvgPerRow": 149.19185209
+  },
+  "readTest": {
+    "simpleQuery": {
+      "neon": 286.47891700000037,
+      "turso": 169.65037499999744
+    },
+    "filterQuery": {
+      "neon": 163.3262500000019,
+      "turso": 88.83420800000022
+    }
+  }
+}
